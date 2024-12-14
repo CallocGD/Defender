@@ -20,8 +20,9 @@ global PRUNE_DATE, CREATION_DATE_LIMIT
 # Prune Date After Joining guild, you can edit that as required
 PRUNE_DATE = timedelta(days=1)
 
-# Creation date After Creating discord account (About 1 month) If were dealing with those weird-ass scammers in the gd-programming server... 
-CREATION_DATE_LIMIT = timedelta(weeks=4)
+# Creation date After Creating discord account (About 6 months)
+CREATION_DATE_LIMIT = timedelta(weeks=26)
+
 
 
 
@@ -78,6 +79,7 @@ class PrunedMember(IDModel, table=True):
 # into my bot to make it more aggressive.
 
 # I guess you can call this EvilCalloc if you'd like...
+
 
 class LockdownChannel(IDModel, table=True):
     """A Channel that is considered to be on-lockdown"""
@@ -137,7 +139,7 @@ class Defender(Client):
         return await self.tree.sync(guild=guildObject)
 
 
-    # 1146963932515414026
+
     async def setup_hook(self):
         
         async with aiofiles.open("config.yaml", "r") as cfg:
@@ -303,11 +305,22 @@ class Defender(Client):
             await s.commit()
         return ldc
     
+    async def get_lockdown(self, guild:Guild, channel:discord.TextChannel):
+        async with self.session() as s:
+            scalar = await s.exec(
+                select(LockdownChannel)
+                .where(LockdownChannel.guild_id == guild.id)
+                .where(LockdownChannel.channel_id == channel.id)
+            )
+            ld_channel = scalar.one_or_none()
+        return ld_channel
+
+
     async def update_lockdown_role(self, ldc:LockdownChannel):
         async with self.session() as s:
             await s.merge(ldc)
             await s.commit()
-    
+
     
     async def delete_lockdown(self, ldc:LockdownChannel):
         """Cleans up an entire lockdown along with all it's inner nodes..."""
