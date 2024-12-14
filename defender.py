@@ -280,7 +280,29 @@ async def lock_channel(
     await interaction.followup.send(f"""Channel {channel.name} is locked-down""")
 
 
-# TODO Unlock command...
+@bot.tree.command(name="unlock-channel")
+@commands.bot_has_permissions(manage_channels=True)
+@commands.has_permissions(manage_channels=True)
+async def unlock_channel(
+    interaction: discord.Interaction,
+    channel: Optional[discord.TextChannel] = None
+):
+    """Unlocks a discord channel that was perviously locked"""
+    # TODO: defer wrapper?
+    await interaction.response.defer()
+    _channel = channel or interaction.channel
+    ld = await bot.get_lockdown(interaction.guild, _channel)
+    if not ld:
+        return await interaction.followup.send(f"{_channel.name} was not locked down so your good to go." )
+    else:
+        await interaction.followup.send(f"Unlocking {_channel.name}...")
+        for role in ld.roles:
+            if dsc_role := interaction.guild.get_role(role.role_id):
+                await _channel.set_permissions(dsc_role)
+        await interaction.followup.send("refreshing database...")
+        await bot.delete_lockdown(ld)
+        await interaction.followup.send(embed=discord.Embed(title="Lockdown successfully freed").add_field(name="Channel", value=_channel.name))
+
 
 
 
