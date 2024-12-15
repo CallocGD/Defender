@@ -11,16 +11,12 @@ from taskmaster import suppress
 
 from colorama import init
 
-from models import Defender
+from models import Defender, LockdownChannel
 from typing import Union, Optional
 import io
 
 
 bot = Defender("$")
-
-# TODO: Slash commands?
-
-
 
 async def safe_prune(member: Member):
     # All roles should be removed from the member
@@ -258,11 +254,7 @@ async def lock_channel(
 
     assert channel, "No Channel Exists"
 
-    ldm = await bot.create_lockdown(interaction.guild, channel)
-
-    overwrite = discord.PermissionOverwrite()
-    overwrite.send_messages = False
-    overwrite.read_messages = True
+    ldm = LockdownChannel(channel_id=channel.id, guild_id=interaction.guild.id)
 
     for role in interaction.guild.roles:
         if role.permissions.send_messages:
@@ -274,10 +266,12 @@ async def lock_channel(
                 # Moderators can talk here to help with damage control
                 continue
 
-            await channel.set_permissions(role, overwrite)
+            await channel.set_permissions(target=role, send_messages=False)
             ldm.add_role(role)
     await bot.update_lockdown_role(ldm)
     await interaction.followup.send(f"""Channel {channel.name} is locked-down""")
+
+
 
 
 @bot.tree.command(name="unlock-channel")
@@ -296,13 +290,8 @@ async def unlock_channel(
         return await interaction.followup.send(f"{_channel.name} was not locked down so your good to go." )
     else:
         await interaction.followup.send(f"Unlocking {_channel.name}...")
-        for role in ld.roles:
-            if dsc_role := interaction.guild.get_role(role.role_id):
-                await _channel.set_permissions(dsc_role)
-        await interaction.followup.send("refreshing database...")
-        await bot.delete_lockdown(ld)
+        await bot.remove_lockdown(interaction.guild, _channel)
         await interaction.followup.send(embed=discord.Embed(title="Lockdown successfully freed").add_field(name="Channel", value=_channel.name))
-
 
 
 
