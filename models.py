@@ -11,6 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 import aiofiles
 import yaml
 from taskmaster import suppress, amap
+from sqlalchemy.orm import selectinload
 
 
 global PRUNE_DATE, CREATION_DATE_LIMIT
@@ -83,8 +84,8 @@ class PrunedMember(IDModel, table=True):
 
 class LockdownChannel(IDModel, table=True):
     """A Channel that is considered to be on-lockdown"""
-    guild_id: int = Field(unique=True)
-    channel_id:int = Field(unique=True)
+    channel_id:int
+    guild_id:int
     """Text id channel being locked down"""
     date : datetime = datetime.now() 
     """Timestamp of a lockdown good for record-keeping..."""
@@ -100,9 +101,15 @@ class LockdownRole(IDModel, table=True):
     
     role_id:int
     """Discord Role ID being locked and unable to write text... (These can be filtered by role via command...)"""
-    
-    channel_id : Optional[int] = Relationship(back_populates="lockdownchannel.id")
+    channel_id : Optional[int] = Field(default=None, foreign_key="lockdownchannel.id")
     channel:Optional[LockdownChannel] = Relationship(back_populates="roles")
+
+
+
+
+class MissingPruneRole(Exception):
+    """Owner/Admin didn't set Pruning Roles"""
+    pass
 
 
 
@@ -321,19 +328,20 @@ class Defender(Client):
             await s.merge(ldc)
             await s.commit()
 
-    
-    async def delete_lockdown(self, ldc:LockdownChannel):
-        """Cleans up an entire lockdown along with all it's inner nodes..."""
-
+    async def remove_lockdown(self, guild:Guild, channel:discord.TextChannel):
         async with self.session() as s:
+            scalar = await s.exec(
+                select(LockdownChannel)
+                .where(LockdownChannel.guild_id == guild.id)
+                .where(LockdownChannel.channel_id == channel.id)
+                # selectinload is the important part otherwise no roles will be loaded and an error is thrown.
+                .options(selectinload(LockdownChannel.roles))
+            )
+            ldc = scalar.one_or_none()
 
-            # I don't expect anybody to have over 200 roles 
-            # therefore this is currently safe...
-            await amap(s.delete, ldc.roles, 2)
-            await s.commit()
-            
+            for role in ldc.roles:
+                if dsc_role := guild.get_role(role.role_id):
+                    await channel.set_permissions(dsc_role, send_messages=True)
             await s.delete(ldc)
             await s.commit()
-        
-    
-    
+            
